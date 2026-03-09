@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "lib": ["ES2020", "ES2022.Intl", "DOM"],
+    "paths": {
+      "tiptap-track-changes": ["../src"]
+    }
+  },
+  "include": ["src"]
+}

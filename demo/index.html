@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tiptap-track-changes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div id="app">
+
+    <header id="header">
+      <div class="header-left">
+        <div class="logo-mark">TC</div>
+        <div class="header-title">
+          <h1>tiptap-track-changes</h1>
+          <span class="header-sub">Open-source suggesting mode for Tiptap</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="header-meta">
+          <span class="tests-badge">200+ tests passing</span>
+        </div>
+      </div>
+    </header>
+
+    <div id="toolbar">
+      <div class="toolbar-section toolbar-left">
+        <div class="toolbar-group">
+          <div class="mode-switcher" id="mode-selector" role="group" aria-label="Editor mode">
+            <button data-mode="edit" class="mode-btn" title="Direct editing — changes apply immediately" aria-pressed="false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              <span>Edit</span>
+            </button>
+            <button data-mode="suggest" class="mode-btn active" title="Suggesting mode — edits become proposals" aria-pressed="true">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19 7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg>
+              <span>Suggest</span>
+            </button>
+            <button data-mode="view" class="mode-btn" title="View only — no editing allowed" aria-pressed="false">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>View</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-group">
+          <label class="toolbar-label" for="author-selector">Author</label>
+          <div class="author-select-wrap">
+            <span class="author-dot-indicator" id="author-dot"></span>
+            <select id="author-selector">
+              <option value="user">You</option>
+              <option value="reviewer">Reviewer</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <div class="toolbar-group">
+          <label class="toolbar-label" for="scenario-selector">Scenario</label>
+          <select id="scenario-selector"></select>
+        </div>
+      </div>
+
+      <div class="toolbar-section toolbar-right">
+        <span id="change-count" class="change-count">0 changes</span>
+        <button id="accept-all-btn" class="pill-btn accept-pill" title="Accept all pending changes" aria-label="Accept all pending changes">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Accept All
+        </button>
+        <button id="reject-all-btn" class="pill-btn reject-pill" title="Reject all pending changes" aria-label="Reject all pending changes">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Reject All
+        </button>
+      </div>
+    </div>
+
+    <div id="scenario-banner" class="scenario-banner" style="display:none">
+      <span id="scenario-desc"></span>
+      <button id="scenario-banner-close" class="banner-close" aria-label="Close banner">&times;</button>
+    </div>
+
+    <div id="main">
+      <div id="editor-pane">
+        <div id="editor-page">
+          <div id="editor"></div>
+        </div>
+      </div>
+      <div id="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-tabs" role="tablist" aria-label="Sidebar views">
+            <button id="tab-review" class="sidebar-tab active" data-tab="review" role="tab" aria-selected="true" aria-controls="panel-review" tabindex="0">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Review
+            </button>
+            <button id="tab-timeline" class="sidebar-tab" data-tab="timeline" role="tab" aria-selected="false" aria-controls="panel-timeline" tabindex="-1">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Timeline
+            </button>
+          </div>
+          <div class="sidebar-header-right">
+            <div id="sidebar-nav-group" class="sidebar-nav-group">
+              <button id="prev-change-btn" class="nav-btn" title="Previous change (Alt+Up)" aria-label="Go to previous change">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+              </button>
+              <button id="next-change-btn" class="nav-btn" title="Next change (Alt+Down)" aria-label="Go to next change">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            </div>
+            <span id="sidebar-count" class="sidebar-count"></span>
+          </div>
+        </div>
+
+        <!-- Review panel (default) -->
+        <div id="panel-review" role="tabpanel" aria-labelledby="tab-review">
+          <div id="changes-list"></div>
+          <div id="no-changes" class="no-changes">
+            <div class="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+            </div>
+            <p class="empty-title">No pending changes</p>
+            <p class="empty-hint">Switch to <strong>Suggest</strong> mode and start editing. Your changes will appear here as proposals to accept or reject.</p>
+          </div>
+        </div>
+
+        <!-- Timeline panel -->
+        <div id="panel-timeline" role="tabpanel" aria-labelledby="tab-timeline" style="display:none">
+          <div id="timeline-list"></div>
+          <div id="no-history" class="no-changes">
+            <div class="empty-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <p class="empty-title">No history yet</p>
+            <p class="empty-hint">As changes are created, accepted, or rejected, their history will appear here.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer id="status-bar">
+      <div class="status-left">
+        <div class="status-chip" id="status-mode-chip">
+          <span class="status-dot"></span>
+          <span id="status-mode">suggest</span>
+        </div>
+        <div class="status-chip">
+          <span id="status-author">You</span>
+        </div>
+      </div>
+      <div class="status-right">
+        <span id="status-changes" class="status-changes-summary">No changes</span>
+      </div>
+    </footer>
+
+    <!-- B4: Visually hidden aria-live region for announcements -->
+    <div id="aria-announcements" aria-live="polite" class="sr-only"></div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

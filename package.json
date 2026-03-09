@@ -1,0 +1,67 @@
+{
+  "name": "tiptap-track-changes",
+  "version": "0.1.0",
+  "description": "Open-source track changes (suggesting mode) extension for Tiptap",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sungkhum/tip-tap-track-changes.git"
+  },
+  "homepage": "https://github.com/sungkhum/tip-tap-track-changes",
+  "bugs": {
+    "url": "https://github.com/sungkhum/tip-tap-track-changes/issues"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "cd demo && npx vite",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@tiptap/core": "^2.0.0",
+    "@tiptap/pm": "^2.0.0"
+  },
+  "devDependencies": {
+    "@tiptap/core": "^2.11.0",
+    "@tiptap/extension-bold": "^2.11.0",
+    "@tiptap/extension-document": "^2.11.0",
+    "@tiptap/extension-heading": "^3.20.1",
+    "@tiptap/extension-history": "^2.11.0",
+    "@tiptap/extension-italic": "^2.11.0",
+    "@tiptap/extension-paragraph": "^2.11.0",
+    "@tiptap/extension-strike": "^2.11.0",
+    "@tiptap/extension-text": "^2.11.0",
+    "@tiptap/extension-underline": "^2.11.0",
+    "@tiptap/pm": "^2.11.0",
+    "jsdom": "^26.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^3.0.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "tiptap",
+    "prosemirror",
+    "track-changes",
+    "suggesting",
+    "editor",
+    "rich-text",
+    "diff",
+    "review",
+    "collaboration",
+    "google-docs"
+  ],
+  "files": [
+    "dist"
+  ]
+}

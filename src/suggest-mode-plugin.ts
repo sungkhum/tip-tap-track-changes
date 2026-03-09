@@ -12,8 +12,14 @@ let _isHistoryTransaction: ((tr: Transaction) => boolean) | undefined;
 try {
   // Dynamic import resolved eagerly at module load. If @tiptap/pm/history
   // is not installed, this is a no-op and we fall back to a simple heuristic.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  _isHistoryTransaction = require('@tiptap/pm/history').isHistoryTransaction;
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const historyModule = (Function('return typeof require !== "undefined" ? require : undefined')() as
+    | ((id: string) => Record<string, unknown>)
+    | undefined
+  )?.('@tiptap/pm/history');
+  if (historyModule?.isHistoryTransaction) {
+    _isHistoryTransaction = historyModule.isHistoryTransaction as typeof _isHistoryTransaction;
+  }
 } catch {
   // history not available
 }

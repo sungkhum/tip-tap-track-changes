@@ -1,8 +1,27 @@
 # tiptap-track-changes
 
+[![npm version](https://img.shields.io/npm/v/tiptap-track-changes.svg)](https://www.npmjs.com/package/tiptap-track-changes)
+[![license](https://img.shields.io/npm/l/tiptap-track-changes.svg)](https://github.com/sungkhum/tip-tap-track-changes/blob/main/LICENSE)
+
 Open-source track changes / suggesting mode extension for [Tiptap](https://tiptap.dev). Adds Google Docs-style change tracking to any Tiptap editor — insertions, deletions, replacements, and format changes are recorded as inline marks that can be individually accepted or rejected.
 
-**[Live Demo](https://sungkhum.github.io/tip-tap-track-changes/)**
+**[Live Demo](https://sungkhum.github.io/tip-tap-track-changes/)** | **[npm](https://www.npmjs.com/package/tiptap-track-changes)**
+
+## Install
+
+```bash
+npm install tiptap-track-changes
+```
+
+```bash
+yarn add tiptap-track-changes
+```
+
+```bash
+pnpm add tiptap-track-changes
+```
+
+> Peer dependencies: `@tiptap/core` and `@tiptap/pm` (v2+). You probably already have these if you're using Tiptap.
 
 ## Features
 
@@ -14,14 +33,6 @@ Open-source track changes / suggesting mode extension for [Tiptap](https://tipta
 - **Undo/redo integration**: Tracked changes work correctly with Tiptap's built-in history extension
 - **Complex script support**: Tested with RTL (Arabic, Hebrew), Khmer, Thai, CJK, Devanagari, and other complex scripts
 - **200+ tests**: Comprehensive test suite covering edge cases, multi-author scenarios, and complex scripts
-
-## Install
-
-```bash
-npm install tiptap-track-changes
-```
-
-Peer dependencies: `@tiptap/core` and `@tiptap/pm` (v2+).
 
 ## Quick Start
 
@@ -153,16 +164,19 @@ In **suggest mode**, the extension intercepts text input, deletions, Enter key, 
 
 When a change is **accepted**, its marks are removed (insertions become normal text, deletions are removed from the document). When **rejected**, the opposite happens (insertions are removed, deletions become normal text).
 
-## Demo
+## Running the Demo Locally
 
 The `demo/` directory contains a full interactive demo with a review sidebar, timeline view, keyboard navigation, and pre-built scenarios.
 
 ```bash
-# From the repo root
+git clone https://github.com/sungkhum/tip-tap-track-changes.git
+cd tip-tap-track-changes
 npm install
 cd demo && npm install
 cd .. && npm run dev
 ```
+
+Or try the **[hosted demo](https://sungkhum.github.io/tip-tap-track-changes/)** directly.
 
 ## Running Tests
 

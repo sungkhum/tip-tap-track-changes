@@ -2,6 +2,8 @@
 
 Open-source track changes / suggesting mode extension for [Tiptap](https://tiptap.dev). Adds Google Docs-style change tracking to any Tiptap editor — insertions, deletions, replacements, and format changes are recorded as inline marks that can be individually accepted or rejected.
 
+**[Live Demo](https://sungkhum.github.io/tip-tap-track-changes/)**
+
 ## Features
 
 - **Three editor modes**: `edit` (direct changes), `suggest` (tracked proposals), `view` (read-only)

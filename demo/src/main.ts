@@ -242,6 +242,6 @@ initSidebarTabs();
 // --- Initial render ---
 updateAll();
 
-// Load the second scenario by default (Translation Review has pre-baked changes — more interesting)
-scenarioSelect.value = 'translation-review';
-loadScenario('translation-review');
+// Load the second scenario by default (Article Review has pre-baked changes — more interesting)
+scenarioSelect.value = 'article-review';
+loadScenario('article-review');

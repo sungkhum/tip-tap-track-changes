@@ -7,6 +7,8 @@ Open-source track changes / suggesting mode extension for [Tiptap](https://tipta
 
 **[Live Demo](https://sungkhum.github.io/tip-tap-track-changes/)** | **[npm](https://www.npmjs.com/package/tiptap-track-changes)**
 
+![tiptap-track-changes demo showing multi-author suggesting mode with review sidebar](demo/screenshot.jpg)
+
 ## Install
 
 ```bash

@@ -1,5 +1,7 @@
 import type { Editor } from '@tiptap/core';
+import type { EditorView } from '@tiptap/pm/view';
 import { getGroupedChanges, type TrackedChangeInfo } from 'tiptap-track-changes';
+import { showInlineDiff, clearInlineDiff } from './inline-diff';
 
 // --- Timeline event log ---
 
@@ -10,9 +12,17 @@ export interface TimelineEvent {
   changeId?: string;
   changeType?: string;
   text?: string;
+  insertedText?: string;
+  deletedText?: string;
   authorName?: string;
   authorColor?: string;
   count?: number;
+  /** Context before the change for position finding */
+  contextBefore?: string;
+  /** Context after the change for position finding */
+  contextAfter?: string;
+  /** Document snapshot (JSON) at time of this event — for version restore */
+  snapshot?: unknown;
 }
 
 const timelineEvents: TimelineEvent[] = [];
@@ -20,6 +30,17 @@ let knownChangeIds = new Set<string>();
 let activeTab: 'review' | 'timeline' = 'review';
 // Track which regions are expanded (persists across re-renders)
 const expandedRegions = new Set<string>();
+
+// Track the currently selected timeline event for persistent highlighting
+let selectedTimelineChangeId: string | null = null;
+
+// Editor view reference for inline diff decorations
+let editorView: EditorView | null = null;
+
+/** Set the editor view reference (called from main.ts after editor creation) */
+export function setEditorView(view: EditorView): void {
+  editorView = view;
+}
 
 function generateEventId(): string {
   return `evt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -35,6 +56,40 @@ function logEvent(event: Omit<TimelineEvent, 'id' | 'timestamp'>): void {
   if (timelineEvents.length > 200) timelineEvents.length = 200;
 }
 
+/**
+ * Extract surrounding context text for a change group.
+ * Used for finding the change position later after it's been resolved.
+ */
+function getChangeContext(
+  editor: Editor,
+  changes: TrackedChangeInfo[],
+): { contextBefore: string; contextAfter: string } {
+  const doc = editor.state.doc;
+  const minFrom = Math.min(...changes.map((c) => c.from));
+  const maxTo = Math.max(...changes.map((c) => c.to));
+  let contextBefore = '';
+  let contextAfter = '';
+
+  try {
+    const $from = doc.resolve(minFrom);
+    const parentStart = $from.start($from.depth);
+    if (minFrom > parentStart) {
+      const raw = doc.textBetween(parentStart, minFrom, '', '');
+      contextBefore = raw.slice(-40);
+    }
+    const $to = doc.resolve(maxTo);
+    const parentEnd = $to.end($to.depth);
+    if (maxTo < parentEnd) {
+      const raw = doc.textBetween(maxTo, parentEnd, '', '');
+      contextAfter = raw.slice(0, 40);
+    }
+  } catch {
+    // Ignore position errors
+  }
+
+  return { contextBefore, contextAfter };
+}
+
 function detectNewChanges(editor: Editor): void {
   const groups = getGroupedChanges(editor);
   const currentIds = new Set(groups.keys());
@@ -42,17 +97,21 @@ function detectNewChanges(editor: Editor): void {
   for (const [changeId, changes] of groups) {
     if (!knownChangeIds.has(changeId)) {
       const groupType = classifyGroup(changes);
-      const textPreview =
-        changes.find((c) => c.type === 'insertion')?.text ??
-        changes.find((c) => c.type === 'deletion')?.text ??
-        '';
+      const insertedText = changes.find((c) => c.type === 'insertion')?.text ?? '';
+      const deletedText = changes.find((c) => c.type === 'deletion')?.text ?? '';
+      const textPreview = insertedText || deletedText;
+      const { contextBefore, contextAfter } = getChangeContext(editor, changes);
       logEvent({
         type: 'created',
         changeId,
         changeType: groupType,
         text: textPreview.slice(0, 50),
+        insertedText: insertedText.slice(0, 120),
+        deletedText: deletedText.slice(0, 120),
         authorName: changes[0].authorName,
         authorColor: changes[0].authorColor,
+        contextBefore,
+        contextAfter,
       });
     }
   }
@@ -63,14 +122,16 @@ function detectNewChanges(editor: Editor): void {
 export function logBulkAction(
   type: 'batch_accepted' | 'batch_rejected',
   count: number,
+  snapshot?: unknown,
 ): void {
-  logEvent({ type, count });
+  logEvent({ type, count, snapshot });
 }
 
 export function resetTimeline(): void {
   timelineEvents.length = 0;
   knownChangeIds.clear();
   expandedRegions.clear();
+  clearTimelineSelection();
 }
 
 export function getTimelineEvents(): readonly TimelineEvent[] {
@@ -81,6 +142,8 @@ export function getTimelineEvents(): readonly TimelineEvent[] {
 
 function activateTab(tab: 'review' | 'timeline'): void {
   activeTab = tab;
+  // Clear persistent timeline highlight when switching tabs
+  clearTimelineSelection();
   const tabBtns = document.querySelectorAll<HTMLButtonElement>('.sidebar-tab');
   const reviewPanel = document.getElementById('panel-review');
   const timelinePanel = document.getElementById('panel-timeline');
@@ -337,6 +400,66 @@ function clearAllHighlights(): void {
   hoverStyleEl.textContent = '';
 }
 
+function clearTimelineSelection(): void {
+  selectedTimelineChangeId = null;
+  clearAllHighlights();
+  // Remove active class from all timeline events
+  document.querySelectorAll('.timeline-event.timeline-selected').forEach((el) => {
+    el.classList.remove('timeline-selected');
+  });
+  // Clear any inline diff decorations
+  if (editorView) clearInlineDiff(editorView);
+}
+
+/**
+ * Find a change's position in the editor by changeId and navigate to it.
+ * Returns true if the change was found and navigated to.
+ */
+function navigateToChangeById(editor: Editor, changeId: string): boolean {
+  const groups = getGroupedChanges(editor);
+  const changes = groups.get(changeId);
+  if (!changes || changes.length === 0) return false;
+
+  const firstChange = changes[0];
+  try {
+    editor.commands.setTextSelection(firstChange.from);
+    editor.commands.focus();
+
+    // Scroll the change element into view in the editor
+    requestAnimationFrame(() => {
+      const el = document.querySelector(
+        `#editor [data-change-id="${CSS.escape(changeId)}"]`,
+      );
+      if (el) {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Select a timeline event: persistently highlight it and navigate to it.
+ */
+function selectTimelineEvent(
+  editor: Editor,
+  changeId: string,
+  eventElement: HTMLElement,
+): void {
+  // Clear any previous selection
+  clearTimelineSelection();
+
+  // Set new selection
+  selectedTimelineChangeId = changeId;
+  eventElement.classList.add('timeline-selected');
+  highlightChange(changeId);
+
+  // Try to navigate to the change in the editor
+  navigateToChangeById(editor, changeId);
+}
+
 // --- Render change preview content ---
 
 function renderPreviewContent(
@@ -461,17 +584,23 @@ function renderChangeCard(
     card.style.transform = 'translateX(-12px) scale(0.97)';
     card.style.background = 'var(--accept-bg)';
     announce(`Change accepted: ${TYPE_LABELS[groupType]}`);
-    const textPreview =
-      changes.find((c) => c.type === 'insertion')?.text ??
-      changes.find((c) => c.type === 'deletion')?.text ??
-      '';
+    const insText = changes.find((c) => c.type === 'insertion')?.text ?? '';
+    const delText = changes.find((c) => c.type === 'deletion')?.text ?? '';
+    const { contextBefore, contextAfter } = getChangeContext(editor, changes);
+    // Snapshot before the action for version restore
+    const snapshot = editor.getJSON();
     logEvent({
       type: 'accepted',
       changeId,
       changeType: groupType,
-      text: textPreview.slice(0, 50),
+      text: (insText || delText).slice(0, 50),
+      insertedText: insText.slice(0, 120),
+      deletedText: delText.slice(0, 120),
       authorName: firstChange.authorName,
       authorColor: firstChange.authorColor,
+      contextBefore,
+      contextAfter,
+      snapshot,
     });
     setTimeout(() => editor.commands.acceptChange(changeId), 200);
   });
@@ -482,17 +611,22 @@ function renderChangeCard(
     card.style.transform = 'translateX(12px) scale(0.97)';
     card.style.background = 'var(--reject-bg)';
     announce(`Change rejected: ${TYPE_LABELS[groupType]}`);
-    const textPreview =
-      changes.find((c) => c.type === 'insertion')?.text ??
-      changes.find((c) => c.type === 'deletion')?.text ??
-      '';
+    const insText = changes.find((c) => c.type === 'insertion')?.text ?? '';
+    const delText = changes.find((c) => c.type === 'deletion')?.text ?? '';
+    const { contextBefore, contextAfter } = getChangeContext(editor, changes);
+    const snapshot = editor.getJSON();
     logEvent({
       type: 'rejected',
       changeId,
       changeType: groupType,
-      text: textPreview.slice(0, 50),
+      text: (insText || delText).slice(0, 50),
+      insertedText: insText.slice(0, 120),
+      deletedText: delText.slice(0, 120),
       authorName: firstChange.authorName,
       authorColor: firstChange.authorColor,
+      contextBefore,
+      contextAfter,
+      snapshot,
     });
     setTimeout(() => editor.commands.rejectChange(changeId), 200);
   });
@@ -887,6 +1021,7 @@ function renderRegionCard(
     logEvent({
       type: 'batch_accepted',
       count: region.groups.length,
+      snapshot: editor.getJSON(),
     });
     setTimeout(() => {
       for (const g of [...region.groups].reverse()) {
@@ -909,6 +1044,7 @@ function renderRegionCard(
     logEvent({
       type: 'batch_rejected',
       count: region.groups.length,
+      snapshot: editor.getJSON(),
     });
     setTimeout(() => {
       for (const g of [...region.groups].reverse()) {
@@ -1145,6 +1281,49 @@ function formatTime(dateStr: string): string {
   });
 }
 
+/**
+ * Trigger an inline diff for resolved changes only.
+ * Active ("created") changes already have visible marks — no overlay needed.
+ */
+function triggerInlineDiff(event: TimelineEvent): void {
+  if (!editorView) return;
+
+  // Only show inline diff for resolved changes
+  if (event.type !== 'accepted' && event.type !== 'rejected') return;
+  if (!event.insertedText && !event.deletedText) return;
+
+  let survivingText: string;
+  let ghostText: string;
+  let ghostPosition: 'before' | 'after';
+  let action: 'accepted' | 'rejected';
+
+  if (event.type === 'accepted') {
+    // Accepted: inserted text survives, deleted text is gone
+    survivingText = event.insertedText ?? '';
+    ghostText = event.deletedText ?? '';
+    ghostPosition = 'before';
+    action = 'accepted';
+  } else {
+    // Rejected: original (deleted) text is restored, inserted text is gone
+    survivingText = event.deletedText ?? '';
+    ghostText = event.insertedText ?? '';
+    ghostPosition = 'after';
+    action = 'rejected';
+  }
+
+  if (!survivingText && !ghostText) return;
+
+  showInlineDiff(editorView, {
+    survivingText,
+    ghostText,
+    contextBefore: event.contextBefore ?? '',
+    contextAfter: event.contextAfter ?? '',
+    ghostPosition,
+    action,
+    authorColor: event.authorColor,
+  });
+}
+
 function renderTimelineEvent(event: TimelineEvent, editor?: Editor): HTMLElement {
   const item = document.createElement('div');
   item.className = `timeline-event timeline-event-${event.type}`;
@@ -1172,8 +1351,48 @@ function renderTimelineEvent(event: TimelineEvent, editor?: Editor): HTMLElement
 
   body.appendChild(label);
 
-  // Change details
-  if (event.changeType || event.text) {
+  // Change details — varies by event type
+  const isResolved = event.type === 'accepted' || event.type === 'rejected';
+
+  if (isResolved && (event.deletedText || event.insertedText)) {
+    // Resolved: show type badge + compact diff summary (replaces text preview)
+    const detail = document.createElement('div');
+    detail.className = 'timeline-event-detail';
+
+    if (event.changeType) {
+      const badge = document.createElement('span');
+      badge.className = `change-type ${event.changeType}`;
+      badge.textContent = TYPE_LABELS[event.changeType] ?? event.changeType;
+      detail.appendChild(badge);
+    }
+
+    body.appendChild(detail);
+
+    const diffSummary = document.createElement('div');
+    diffSummary.className = 'timeline-diff-summary';
+
+    if (event.deletedText) {
+      const del = document.createElement('span');
+      del.className = 'timeline-diff-del';
+      del.textContent = truncate(event.deletedText, 25);
+      diffSummary.appendChild(del);
+    }
+    if (event.deletedText && event.insertedText) {
+      const arrow = document.createElement('span');
+      arrow.className = 'timeline-diff-arrow';
+      arrow.textContent = '\u2192';
+      diffSummary.appendChild(arrow);
+    }
+    if (event.insertedText) {
+      const ins = document.createElement('span');
+      ins.className = 'timeline-diff-ins';
+      ins.textContent = truncate(event.insertedText, 25);
+      diffSummary.appendChild(ins);
+    }
+
+    body.appendChild(diffSummary);
+  } else if (event.changeType || event.text) {
+    // Active/other: show type badge + text preview
     const detail = document.createElement('div');
     detail.className = 'timeline-event-detail';
 
@@ -1215,30 +1434,86 @@ function renderTimelineEvent(event: TimelineEvent, editor?: Editor): HTMLElement
   time.textContent = formatTime(event.timestamp);
   meta.appendChild(time);
 
-  body.appendChild(meta);
-
-  item.append(iconWrap, body);
-
-  // Make timeline events interactive — hover highlights the change in editor
-  if (event.changeId && editor) {
-    item.style.cursor = 'pointer';
-    item.addEventListener('mouseenter', () => {
-      clearAllHighlights();
-      highlightChange(event.changeId!);
-    });
-    item.addEventListener('mouseleave', clearAllHighlights);
-    item.addEventListener('click', () => {
-      // Try to focus the change in the editor (only works if change still exists)
-      try {
-        editor.commands.focus();
-      } catch { /* change may no longer exist */ }
-    });
-    item.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        try { editor.commands.focus(); } catch { /* noop */ }
+  // Restore button for events with snapshots
+  if (event.snapshot && editor) {
+    const restoreBtn = document.createElement('button');
+    restoreBtn.className = 'timeline-restore-btn';
+    restoreBtn.title = 'Restore document to this point';
+    restoreBtn.setAttribute('aria-label', 'Restore document to this point');
+    restoreBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>';
+    restoreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Confirm before restoring
+      const ok = window.confirm(
+        'Restore the document to this point?\n\nThis will replace the current content with the state before this action was taken.',
+      );
+      if (ok) {
+        clearTimelineSelection();
+        editor.commands.setContent(event.snapshot as Record<string, unknown>);
+        announce('Document restored');
       }
     });
+    meta.appendChild(restoreBtn);
+  }
+
+  body.appendChild(meta);
+  item.append(iconWrap, body);
+
+  // --- Interaction behavior (varies by event type) ---
+  if (editor) {
+    const isActive = event.type === 'created';
+    const changeId = event.changeId;
+
+    if (changeId) {
+      item.classList.add('timeline-interactive');
+
+      // Hover: highlight change in editor (for active changes only — they have marks)
+      if (isActive) {
+        item.addEventListener('mouseenter', () => highlightChange(changeId));
+        item.addEventListener('mouseleave', () => {
+          if (selectedTimelineChangeId) {
+            clearAllHighlights();
+            highlightChange(selectedTimelineChangeId);
+          } else {
+            clearAllHighlights();
+          }
+        });
+      }
+
+      // Click behavior depends on event type
+      const handleClick = () => {
+        const wasSelected = selectedTimelineChangeId === changeId
+          && item.classList.contains('timeline-selected');
+
+        // Deselect if clicking the same event again
+        if (wasSelected) {
+          clearTimelineSelection();
+          return;
+        }
+
+        // Select this event
+        clearTimelineSelection();
+        selectedTimelineChangeId = changeId;
+        item.classList.add('timeline-selected');
+
+        if (isActive) {
+          // Active change: just navigate to it (marks are already visible)
+          navigateToChangeById(editor, changeId);
+          highlightChange(changeId);
+        } else if (isResolved) {
+          // Resolved change: show inline diff in the editor
+          triggerInlineDiff(event);
+        }
+      };
+
+      item.addEventListener('click', handleClick);
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleClick();
+        }
+      });
+    }
   }
 
   return item;

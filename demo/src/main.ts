@@ -1,4 +1,4 @@
-import { Editor } from '@tiptap/core';
+import { Editor, Extension } from '@tiptap/core';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
@@ -20,7 +20,9 @@ import {
   initSidebarTabs,
   resetTimeline,
   logBulkAction,
+  setEditorView,
 } from './sidebar';
+import { createInlineDiffPlugin } from './inline-diff';
 import './styles.css';
 
 // --- Authors with matching CSS custom property colors ---
@@ -28,6 +30,14 @@ const AUTHORS: Record<string, ChangeAuthor> = {
   user: { id: 'user-1', name: 'You', color: '#2d5fce' },
   reviewer: { id: 'user-2', name: 'Reviewer', color: '#c4362c' },
 };
+
+// --- Inline diff plugin (wrapped as TipTap extension) ---
+const InlineDiffExtension = Extension.create({
+  name: 'inlineDiff',
+  addProseMirrorPlugins() {
+    return [createInlineDiffPlugin()];
+  },
+});
 
 // --- Create editor ---
 const editor = new Editor({
@@ -44,10 +54,14 @@ const editor = new Editor({
       author: AUTHORS.user,
       mode: 'suggest',
     }),
+    InlineDiffExtension,
   ],
   content: scenarios[0].content,
   autofocus: true,
 });
+
+// Give the sidebar access to the editor's ProseMirror view for inline diffs
+setEditorView(editor.view);
 
 // --- Scenario dropdown ---
 const scenarioSelect = document.getElementById('scenario-selector') as HTMLSelectElement;
@@ -136,14 +150,14 @@ authorSelect.addEventListener('change', () => {
 // --- Accept/Reject all ---
 document.getElementById('accept-all-btn')!.addEventListener('click', () => {
   const count = getGroupedChanges(editor).size;
-  if (count > 0) logBulkAction('batch_accepted', count);
+  if (count > 0) logBulkAction('batch_accepted', count, editor.getJSON());
   editor.commands.acceptAll();
   editor.commands.focus();
 });
 
 document.getElementById('reject-all-btn')!.addEventListener('click', () => {
   const count = getGroupedChanges(editor).size;
-  if (count > 0) logBulkAction('batch_rejected', count);
+  if (count > 0) logBulkAction('batch_rejected', count, editor.getJSON());
   editor.commands.rejectAll();
   editor.commands.focus();
 });

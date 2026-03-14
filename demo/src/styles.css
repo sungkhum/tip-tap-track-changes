@@ -1288,11 +1288,123 @@ select:focus { outline: none; border-color: var(--author-user); box-shadow: 0 0 
 }
 
 /* Timeline event cursor for interactive items */
-.timeline-event[tabindex="0"] {
+.timeline-event {
   cursor: default;
 }
-.timeline-event[style*="cursor: pointer"] {
+.timeline-event.timeline-interactive {
   cursor: pointer;
+}
+
+/* Restore button on resolved timeline events */
+.timeline-restore-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xs);
+  background: var(--paper);
+  color: var(--ink-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+.timeline-event:hover .timeline-restore-btn,
+.timeline-event.timeline-selected .timeline-restore-btn,
+.timeline-event-batch_accepted .timeline-restore-btn,
+.timeline-event-batch_rejected .timeline-restore-btn {
+  display: inline-flex;
+}
+.timeline-restore-btn:hover {
+  background: rgba(45, 95, 206, 0.08);
+  border-color: rgba(45, 95, 206, 0.3);
+  color: var(--ink);
+}
+
+/* Selected/active timeline event */
+.timeline-event.timeline-selected {
+  background: rgba(45, 95, 206, 0.08);
+  border-left: 3px solid rgba(45, 95, 206, 0.5);
+  padding-left: 3px;
+}
+.timeline-event.timeline-selected .timeline-event-icon {
+  background: rgba(45, 95, 206, 0.1);
+  border-color: rgba(45, 95, 206, 0.3);
+}
+.timeline-event.timeline-selected .timeline-event-label {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Compact diff summary — always visible on resolved events */
+.timeline-diff-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 3px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  flex-wrap: wrap;
+}
+.timeline-diff-del {
+  color: #9a3232;
+  text-decoration: line-through;
+  text-decoration-color: rgba(154, 50, 50, 0.5);
+  unicode-bidi: plaintext;
+}
+.timeline-diff-ins {
+  color: #1a6b3c;
+  unicode-bidi: plaintext;
+}
+.timeline-diff-arrow {
+  color: var(--ink-ghost);
+  font-size: 10px;
+}
+
+/* ===================== INLINE DIFF DECORATIONS ===================== */
+/* Shown for resolved (accepted/rejected) timeline events only.         */
+/* Active changes already have visible marks — no overlay needed.       */
+
+/* Surviving text highlight — the text that remains in the document */
+.inline-diff-surviving {
+  border-radius: 2px;
+  transition: background 0.2s ease;
+}
+.inline-diff-surviving.inline-diff-accepted {
+  background: rgba(42, 157, 92, 0.12);
+  box-shadow: 0 0 0 1px rgba(42, 157, 92, 0.25);
+}
+.inline-diff-surviving.inline-diff-rejected {
+  background: rgba(45, 95, 206, 0.10);
+  box-shadow: 0 0 0 1px rgba(45, 95, 206, 0.25);
+}
+
+/* Ghost text — removed content shown inline as strikethrough */
+.inline-diff-ghost {
+  padding: 1px 3px;
+  border-radius: 2px;
+  pointer-events: none;
+  animation: ghostFadeIn 0.25s ease both;
+}
+/* Ghost for accepted: deleted text (what was removed) */
+.inline-diff-ghost-del {
+  color: #9a3232;
+  text-decoration: line-through;
+  text-decoration-color: rgba(154, 50, 50, 0.5);
+  background: rgba(184, 46, 46, 0.08);
+}
+/* Ghost for rejected: inserted text (the suggestion that was rejected) */
+.inline-diff-ghost-ins {
+  color: #6b6b78;
+  text-decoration: line-through;
+  text-decoration-color: rgba(107, 107, 120, 0.5);
+  background: rgba(107, 107, 120, 0.06);
+}
+
+@keyframes ghostFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* ===================== RESPONSIVE ===================== */

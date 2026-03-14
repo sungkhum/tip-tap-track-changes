@@ -21,6 +21,7 @@ export const TrackChangesExtension = Extension.create<
       },
       mode: 'edit',
       onStatusChange: undefined,
+      additionalBlockTypes: [],
     };
   },
 
@@ -37,13 +38,21 @@ export const TrackChangesExtension = Extension.create<
       {
         // Add dataTracked attribute to all block-level nodes for node-level
         // change tracking (e.g., paragraph -> heading type changes)
-        types: ['paragraph', 'heading', 'blockquote', 'codeBlock', 'listItem', 'bulletList', 'orderedList'],
+        types: [...new Set([
+          'paragraph', 'heading', 'blockquote', 'codeBlock', 'listItem', 'bulletList', 'orderedList',
+          ...(this.options.additionalBlockTypes ?? []),
+        ])],
         attributes: {
           dataTracked: {
             default: null,
             parseHTML: (element: HTMLElement) => {
               const val = element.getAttribute('data-tracked');
-              return val ? JSON.parse(val) : null;
+              if (!val) return null;
+              try {
+                return JSON.parse(val);
+              } catch {
+                return null;
+              }
             },
             renderHTML: (attributes: Record<string, unknown>) => {
               if (!attributes.dataTracked) return {};

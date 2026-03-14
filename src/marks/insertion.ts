@@ -1,4 +1,5 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
+import { sanitizeCSSValue } from '../utils';
 
 declare module '@tiptap/core' {
   interface Commands<ReturnType> {
@@ -37,13 +38,14 @@ export const InsertionMark = Mark.create({
   },
 
   renderHTML({ HTMLAttributes }) {
+    const safeColor = sanitizeCSSValue(HTMLAttributes.authorColor);
     return [
       'ins',
       mergeAttributes(this.options.HTMLAttributes, {
         'data-change-id': HTMLAttributes.changeId,
         'data-author-id': HTMLAttributes.authorId,
         'data-author-name': HTMLAttributes.authorName,
-        style: `--author-color: ${HTMLAttributes.authorColor};`,
+        ...(safeColor ? { style: `--author-color: ${safeColor};` } : {}),
       }),
       0,
     ];

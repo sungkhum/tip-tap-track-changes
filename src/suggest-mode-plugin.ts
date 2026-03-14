@@ -1,9 +1,14 @@
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
-import type { Mark, Slice, MarkType } from '@tiptap/pm/model';
+import type { Mark, Slice } from '@tiptap/pm/model';
 import { AddMarkStep, RemoveMarkStep } from '@tiptap/pm/transform';
 import type { Transaction } from '@tiptap/pm/state';
 import type { ChangeAuthor, NodeChangeTracking } from './types';
+import {
+  generateChangeId,
+  lastGraphemeClusterLength,
+  firstGraphemeClusterLength,
+} from './utils';
 
 // Detect undo/redo transactions. prosemirror-history sets a PluginKey-based
 // meta on undo/redo transactions. We eagerly resolve the checker so
@@ -44,12 +49,6 @@ function createNodeTracking(
   };
 }
 
-import {
-  generateChangeId,
-  lastGraphemeClusterLength,
-  firstGraphemeClusterLength,
-} from './utils';
-
 export const trackChangesPluginKey = new PluginKey('trackChanges');
 
 interface SuggestModePluginOptions {
@@ -65,6 +64,29 @@ function createChangeAttrs(author: ChangeAuthor, changeId?: string) {
     authorColor: author.color,
     timestamp: new Date().toISOString(),
   };
+}
+
+/**
+ * Mark a range as deleted, skipping text nodes that already carry a deletion mark.
+ * Used by handleTextInsert, handleSelectionDelete, handleEnter, and applyDeletion
+ * to avoid overwriting another author's existing deletion tracking.
+ */
+function markRangeAsDeleted(
+  doc: import('@tiptap/pm/model').Node,
+  tr: import('@tiptap/pm/state').Transaction,
+  from: number,
+  to: number,
+  deletionMark: Mark,
+): void {
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isText) return;
+    const nodeFrom = Math.max(from, pos);
+    const nodeTo = Math.min(to, pos + node.nodeSize);
+    const hasDeletion = node.marks.some((m) => m.type.name === 'deletion');
+    if (!hasDeletion) {
+      tr.addMark(nodeFrom, nodeTo, deletionMark);
+    }
+  });
 }
 
 function getAdjacentInsertionMark(
@@ -111,9 +133,8 @@ function handleTextInsert(
       createChangeAttrs(author, changeId),
     );
 
-    // Check if selection contains existing deletion-marked text — skip those ranges
-    // For simplicity, mark the whole selection as deleted
-    tr.addMark(from, to, deletionMark);
+    // Mark selected text as deleted, but skip ranges already carrying a deletion mark
+    markRangeAsDeleted(state.doc, tr, from, to, deletionMark);
 
     // Insert new text after the deleted text
     tr.insertText(normalizedText, to);
@@ -188,7 +209,7 @@ function handleDelete(view: EditorView, author: ChangeAuthor): boolean {
   const deleteFrom = $to.pos;
   const deleteTo = $to.pos + clusterLen;
 
-  return applyDeletion(view, deleteFrom, deleteTo, author);
+  return applyDeletion(view, deleteFrom, deleteTo, author, 'forward');
 }
 
 function handleBlockJoinBackward(view: EditorView, author: ChangeAuthor): boolean {
@@ -205,8 +226,8 @@ function handleBlockJoinBackward(view: EditorView, author: ChangeAuthor): boolea
   const node = state.doc.nodeAt(blockPos);
   if (!node) return false;
 
-  // Already tracked? Skip.
-  if (node.attrs.dataTracked?.originalType === 'boundaryDeleted') return true;
+  // Already tracked? Skip to preserve existing tracking.
+  if (node.attrs.dataTracked) return true;
 
   const tr = state.tr;
   const tracking = createNodeTracking(author, 'boundaryDeleted');
@@ -227,8 +248,8 @@ function handleBlockJoinForward(view: EditorView, author: ChangeAuthor): boolean
   const nextNode = state.doc.nodeAt(afterPos);
   if (!nextNode || !nextNode.isBlock) return false;
 
-  // Already tracked? Skip.
-  if (nextNode.attrs.dataTracked?.originalType === 'boundaryDeleted') return true;
+  // Already tracked? Skip to preserve existing tracking.
+  if (nextNode.attrs.dataTracked) return true;
 
   const tr = state.tr;
   const tracking = createNodeTracking(author, 'boundaryDeleted');
@@ -263,7 +284,7 @@ function handleEnter(view: EditorView, author: ChangeAuthor): boolean {
     });
 
     if (hasOwnInsertions) {
-      const ranges: Array<{ from: number; to: number; isOwnInsertion: boolean }> = [];
+      const ranges: Array<{ from: number; to: number; isOwnInsertion: boolean; isAlreadyDeleted: boolean }> = [];
       state.doc.nodesBetween(from, to, (node, pos) => {
         if (!node.isText) return;
         const nodeFrom = Math.max(from, pos);
@@ -271,18 +292,19 @@ function handleEnter(view: EditorView, author: ChangeAuthor): boolean {
         const ownInsertion = node.marks.find(
           (m) => m.type.name === 'insertion' && m.attrs.authorId === author.id,
         );
-        ranges.push({ from: nodeFrom, to: nodeTo, isOwnInsertion: !!ownInsertion });
+        const hasDeletion = node.marks.some((m) => m.type.name === 'deletion');
+        ranges.push({ from: nodeFrom, to: nodeTo, isOwnInsertion: !!ownInsertion, isAlreadyDeleted: hasDeletion });
       });
       for (let i = ranges.length - 1; i >= 0; i--) {
         const range = ranges[i];
         if (range.isOwnInsertion) {
           tr.delete(range.from, range.to);
-        } else {
+        } else if (!range.isAlreadyDeleted) {
           tr.addMark(range.from, range.to, deletionMark);
         }
       }
     } else {
-      tr.addMark(from, to, deletionMark);
+      markRangeAsDeleted(state.doc, tr, from, to, deletionMark);
     }
 
     const splitPos = tr.mapping.map(from);
@@ -306,7 +328,7 @@ function handleEnter(view: EditorView, author: ChangeAuthor): boolean {
       const $splitPos = tr.doc.resolve(pos);
       const emptyParaPos = $splitPos.before($splitPos.depth);
       const emptyNode = tr.doc.nodeAt(emptyParaPos);
-      if (emptyNode) {
+      if (emptyNode && !emptyNode.attrs.dataTracked) {
         const tracking = createNodeTracking(author, 'paragraphInserted');
         tr.setNodeMarkup(emptyParaPos, undefined, { ...emptyNode.attrs, dataTracked: tracking });
       }
@@ -369,6 +391,7 @@ function handleSelectionDelete(
       from: number;
       to: number;
       isOwnInsertion: boolean;
+      isAlreadyDeleted: boolean;
     }> = [];
 
     state.doc.nodesBetween(from, to, (node, pos) => {
@@ -378,10 +401,12 @@ function handleSelectionDelete(
       const ownInsertion = node.marks.find(
         (m) => m.type.name === 'insertion' && m.attrs.authorId === author.id,
       );
+      const hasDeletion = node.marks.some((m) => m.type.name === 'deletion');
       ranges.push({
         from: nodeFrom,
         to: nodeTo,
         isOwnInsertion: !!ownInsertion,
+        isAlreadyDeleted: hasDeletion,
       });
     });
 
@@ -390,16 +415,119 @@ function handleSelectionDelete(
       const range = ranges[i];
       if (range.isOwnInsertion) {
         tr.delete(range.from, range.to);
-      } else {
+      } else if (!range.isAlreadyDeleted) {
         tr.addMark(range.from, range.to, deletionMark);
       }
     }
   } else {
-    // Simple case: mark entire selection as deleted
-    tr.addMark(from, to, deletionMark);
+    // Simple case: mark selection as deleted, skipping already-deleted text
+    markRangeAsDeleted(state.doc, tr, from, to, deletionMark);
+  }
+
+  // Track interior block boundaries as boundaryDeleted for cross-block selections
+  const $selFrom = state.doc.resolve(from);
+  const $selTo = state.doc.resolve(to);
+  if ($selFrom.depth > 0 && $selTo.depth > 0) {
+    const startBlockEnd = $selFrom.end($selFrom.depth);
+    if (to > startBlockEnd + 1) {
+      // Selection spans multiple blocks — mark interior block nodes
+      state.doc.nodesBetween(from, to, (node, pos) => {
+        if (!node.isBlock || !node.isTextblock) return;
+        // Skip the first block (it's the starting block)
+        if (pos <= $selFrom.before($selFrom.depth)) return;
+        if (!node.attrs.dataTracked) {
+          const mappedPos = tr.mapping.map(pos);
+          const mappedNode = tr.doc.nodeAt(mappedPos);
+          if (mappedNode) {
+            const tracking = createNodeTracking(author, 'boundaryDeleted');
+            tr.setNodeMarkup(mappedPos, undefined, { ...mappedNode.attrs, dataTracked: tracking });
+          }
+        }
+      });
+    }
   }
 
   tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(from)));
+  tr.setMeta(trackChangesPluginKey, { handled: true });
+  view.dispatch(tr);
+  return true;
+}
+
+function handleMultiLinePaste(
+  view: EditorView,
+  from: number,
+  to: number,
+  text: string,
+  author: ChangeAuthor,
+): boolean {
+  const { state } = view;
+  const schema = state.schema;
+  const tr = state.tr;
+  const lines = text.split('\n');
+
+  // If there's a selection, mark it as deleted first
+  if (from !== to) {
+    const changeId = generateChangeId();
+    const deletionMark = schema.marks.deletion.create(
+      createChangeAttrs(author, changeId),
+    );
+    markRangeAsDeleted(state.doc, tr, from, to, deletionMark);
+  }
+
+  // Insert the first line at the insertion point (after any deleted selection).
+  // All subsequent positions are tracked in the CURRENT tr.doc space (not original).
+  const insertPos = to;
+  const firstLine = lines[0].normalize('NFC');
+
+  if (firstLine) {
+    const lineMark = schema.marks.insertion.create(createChangeAttrs(author));
+    tr.insertText(firstLine, insertPos);
+    tr.addMark(insertPos, insertPos + firstLine.length, lineMark);
+  }
+
+  // Track cursor in current-document coordinates (NOT original space)
+  let cursor = insertPos + firstLine.length;
+
+  // For subsequent lines, split and insert with tracking
+  for (let i = 1; i < lines.length; i++) {
+    // Split at current position to create a new paragraph
+    tr.split(cursor);
+    const newParaPos = cursor + 1;
+
+    // Mark the new paragraph as inserted
+    const newNode = tr.doc.nodeAt(newParaPos);
+    if (newNode) {
+      const tracking = {
+        changeId: generateChangeId(),
+        authorId: author.id,
+        authorName: author.name,
+        authorColor: author.color,
+        timestamp: new Date().toISOString(),
+        originalType: 'paragraphInserted',
+      };
+      tr.setNodeMarkup(newParaPos, undefined, { ...newNode.attrs, dataTracked: tracking });
+    }
+
+    // Insert the line's text inside the new paragraph
+    const line = lines[i].normalize('NFC');
+    const textPos = newParaPos + 1; // inside the new paragraph
+    if (line) {
+      const lineMark = schema.marks.insertion.create(createChangeAttrs(author));
+      tr.insertText(line, textPos);
+      tr.addMark(textPos, textPos + line.length, lineMark);
+      cursor = textPos + line.length;
+    } else {
+      cursor = textPos;
+    }
+  }
+
+  // Set cursor at end of pasted content
+  try {
+    tr.setSelection(TextSelection.create(tr.doc, cursor));
+  } catch {
+    // If position is invalid, let ProseMirror handle cursor placement
+  }
+
   tr.setMeta(trackChangesPluginKey, { handled: true });
   view.dispatch(tr);
   return true;
@@ -410,6 +538,7 @@ function applyDeletion(
   deleteFrom: number,
   deleteTo: number,
   author: ChangeAuthor,
+  direction: 'backward' | 'forward' = 'backward',
 ): boolean {
   const { state } = view;
   const tr = state.tr;
@@ -435,19 +564,41 @@ function applyDeletion(
   });
 
   if (isOwnInsertion) {
-    // Delete own pending insertion for real
-    tr.delete(deleteFrom, deleteTo);
+    // Process each text node individually: delete own insertions, mark others as deleted
+    const ranges: Array<{ from: number; to: number; isOwn: boolean; isAlreadyDeleted: boolean }> = [];
+    state.doc.nodesBetween(deleteFrom, deleteTo, (node, pos) => {
+      if (!node.isText) return;
+      const nodeFrom = Math.max(deleteFrom, pos);
+      const nodeTo = Math.min(deleteTo, pos + node.nodeSize);
+      const ownIns = node.marks.find(
+        (m) => m.type.name === 'insertion' && m.attrs.authorId === author.id,
+      );
+      const hasDeletion = node.marks.some((m) => m.type.name === 'deletion');
+      ranges.push({ from: nodeFrom, to: nodeTo, isOwn: !!ownIns, isAlreadyDeleted: hasDeletion });
+    });
+    // Process from end to preserve positions
+    for (let i = ranges.length - 1; i >= 0; i--) {
+      const range = ranges[i];
+      if (range.isOwn) {
+        tr.delete(range.from, range.to);
+      } else if (!range.isAlreadyDeleted) {
+        const deletionMark = state.schema.marks.deletion.create(
+          createChangeAttrs(author),
+        );
+        tr.addMark(range.from, range.to, deletionMark);
+      }
+    }
     tr.setMeta(trackChangesPluginKey, { handled: true });
     view.dispatch(tr);
     return true;
   }
 
   if (isAlreadyDeleted) {
-    // Skip over already-deleted text
+    // Skip over already-deleted text in the appropriate direction
     const skipPos = findDeletionBoundary(
       view,
-      deleteFrom,
-      'backward',
+      direction === 'forward' ? deleteTo : deleteFrom,
+      direction,
     );
     tr.setSelection(TextSelection.create(tr.doc, skipPos));
     view.dispatch(tr);
@@ -538,10 +689,24 @@ export function createSuggestModePlugin(
       handlePaste(view, event, _slice: Slice) {
         if (options.getMode() !== 'suggest') return false;
 
-        const text = event.clipboardData?.getData('text/plain');
+        let text = event.clipboardData?.getData('text/plain');
+        if (!text) {
+          // Extract plain text from HTML paste (use DOMParser to avoid script execution)
+          const html = event.clipboardData?.getData('text/html');
+          if (html) {
+            const parsed = new DOMParser().parseFromString(html, 'text/html');
+            text = parsed.body.textContent || '';
+          }
+        }
         if (!text) return false;
 
         const { from, to } = view.state.selection;
+
+        // Multi-line paste: split into paragraphs with tracked insertions
+        if (text.includes('\n')) {
+          return handleMultiLinePaste(view, from, to, text, options.getAuthor());
+        }
+
         return handleTextInsert(view, from, to, text, options.getAuthor());
       },
     },
@@ -670,6 +835,7 @@ export function createSuggestModePlugin(
       // syllable clusters (critical for CJK IME, Korean, complex scripts).
       for (const range of changedRanges) {
         const clampedTo = Math.min(range.to, newState.doc.content.size);
+        if (range.from >= clampedTo) continue;
         newState.doc.nodesBetween(range.from, clampedTo, (node, pos) => {
           if (!node.isText) return;
 

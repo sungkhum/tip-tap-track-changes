@@ -9,6 +9,10 @@ import {
   setSelection,
 } from './setup';
 import { getBaseText, getResultText } from '../src/helpers';
+import {
+  lastGraphemeClusterLength,
+  firstGraphemeClusterLength,
+} from '../src/utils';
 
 describe('Arabic (RTL) script', () => {
   let editor: ReturnType<typeof createTestEditor>;
@@ -387,5 +391,132 @@ describe('Emoji and special Unicode', () => {
     expect(deletions).toHaveLength(1);
     // The deleted text should be the full emoji, not half a surrogate pair
     expect(deletions[0].text).toBe('🌍');
+  });
+});
+
+describe('Grapheme cluster utility functions', () => {
+  describe('Khmer grapheme clusters', () => {
+    it('lastGraphemeClusterLength treats coeng as extending the base', () => {
+      // ម្ org = ម (U+1798) + ្ (U+17D2 coeng) — coeng extends the base
+      // but the subscript consonant ព starts a new cluster per Unicode
+      const text = 'ម្ព';
+      const len = lastGraphemeClusterLength(text);
+      // Last cluster is ព (1 char), not the whole string
+      expect(len).toBe(1);
+    });
+
+    it('firstGraphemeClusterLength treats base + coeng as one cluster', () => {
+      // ម + ្ (coeng) = one grapheme cluster; ព starts the next
+      const text = 'ម្ព';
+      const len = firstGraphemeClusterLength(text);
+      expect(len).toBe(2); // ម + ្
+    });
+
+    it('handles Khmer vowel sign extending a consonant', () => {
+      // ពុ = ព + ុ (consonant + vowel sign) — one cluster
+      const text = 'ពុ';
+      const len = lastGraphemeClusterLength(text);
+      expect(len).toBe(2);
+    });
+
+    it('handles Khmer consonant + multiple combining marks', () => {
+      // ក + ្ (coeng) = cluster of 2
+      const text = 'ក្';
+      const len = lastGraphemeClusterLength(text);
+      expect(len).toBe(2);
+    });
+  });
+
+  describe('Arabic Extended-A combining marks', () => {
+    it('treats Arabic Extended-A marks as combining', () => {
+      // U+08F0 (Arabic open kasratan) is in the Extended-A range
+      const base = '\u0628'; // ba
+      const extMark = '\u08F0'; // Arabic open kasratan
+      const text = 'x' + base + extMark;
+      const len = lastGraphemeClusterLength(text);
+      // base + combining mark should be one cluster
+      expect(len).toBe(2);
+    });
+  });
+
+  describe('Khmer sign atthacan (U+17DD)', () => {
+    it('treats U+17DD as a combining mark', () => {
+      const base = '\u1780'; // Khmer consonant ka
+      const atthacan = '\u17DD';
+      const text = 'x' + base + atthacan;
+      const len = lastGraphemeClusterLength(text);
+      expect(len).toBe(2); // base + atthacan = one cluster
+    });
+  });
+
+  describe('ZWJ and ZWNJ handling', () => {
+    it('treats ZWNJ (U+200C) as part of a cluster', () => {
+      // Devanagari: क + ् (virama) + ZWNJ — prevents conjunct
+      const text = 'x\u0915\u094D\u200C';
+      const len = lastGraphemeClusterLength(text);
+      // virama + ZWNJ should stay with the base
+      expect(len).toBe(3); // क + ् + ZWNJ
+    });
+
+    it('treats ZWJ (U+200D) as part of a cluster', () => {
+      // Devanagari: क + ् (virama) + ZWJ — forces half form
+      const text = 'x\u0915\u094D\u200D';
+      const len = lastGraphemeClusterLength(text);
+      expect(len).toBe(3); // क + ् + ZWJ
+    });
+  });
+
+  describe('Combining Diacritical Marks Extended (U+1AB0-U+1AFF)', () => {
+    it('treats extended combining marks as combining', () => {
+      const text = 'a\u1AB0'; // a + combining doubled circumflex accent
+      const len = lastGraphemeClusterLength(text);
+      expect(len).toBe(2);
+    });
+  });
+
+  describe('Surrogate pair validation in fallback', () => {
+    it('handles emoji as base character at end of string', () => {
+      const text = 'Hello🌍';
+      const len = lastGraphemeClusterLength(text);
+      expect(len).toBe(2); // surrogate pair = 2 code units
+    });
+
+    it('handles emoji followed by combining marks', () => {
+      // emoji + combining enclosing keycap (U+20E3) — though unusual
+      const text = 'x\u0023\u20E3'; // # + combining enclosing keycap
+      const len = lastGraphemeClusterLength(text);
+      expect(len).toBe(2); // # + keycap = one cluster
+    });
+  });
+
+  describe('firstGraphemeClusterLength with surrogate pairs', () => {
+    it('handles emoji as first character', () => {
+      const text = '🌍Hello';
+      const len = firstGraphemeClusterLength(text);
+      expect(len).toBe(2); // surrogate pair = 2 code units
+    });
+
+    it('handles base character followed by combining marks', () => {
+      // e + combining acute accent + combining dot below
+      const text = 'e\u0301\u0323rest';
+      const len = firstGraphemeClusterLength(text);
+      expect(len).toBe(3); // e + 2 combining marks
+    });
+  });
+
+  describe('Devanagari Extended (U+A8E0-U+A8F7)', () => {
+    it('treats Devanagari Extended marks as combining', () => {
+      const text = '\u0915\uA8E0'; // ka + Devanagari combining digit zero
+      const len = lastGraphemeClusterLength(text);
+      expect(len).toBe(2);
+    });
+  });
+
+  describe('Cyrillic Extended-B (U+2DE0-U+2DFF)', () => {
+    it('treats Cyrillic Extended-B marks as combining', () => {
+      const text = '\u0430\u2DE0'; // Cyrillic a + combining Cyrillic letter be
+      const len = lastGraphemeClusterLength(text);
+      expect(len).toBe(2);
+    });
   });
 });

@@ -103,7 +103,22 @@ export function getGroupedChanges(
  */
 export function getBaseText(editor: Editor): string {
   let text = '';
+  let isFirstBlock = true;
   editor.state.doc.descendants((node) => {
+    if (node.isBlock && node.isTextblock) {
+      // In "base" (reject all), paragraphInserted blocks would be joined back
+      // — so skip the newline for them
+      const tracking = node.attrs.dataTracked as NodeChangeTracking | null;
+      if (tracking?.originalType === 'paragraphInserted') {
+        return; // no separator — this split would be undone
+      }
+      if (!isFirstBlock) {
+        text += '\n';
+      }
+      isFirstBlock = false;
+      return;
+    }
+
     if (!node.isText) return;
 
     const hasInsertion = node.marks.some(
@@ -124,7 +139,22 @@ export function getBaseText(editor: Editor): string {
  */
 export function getResultText(editor: Editor): string {
   let text = '';
+  let isFirstBlock = true;
   editor.state.doc.descendants((node) => {
+    if (node.isBlock && node.isTextblock) {
+      // In "result" (accept all), boundaryDeleted blocks would be joined
+      // — so skip the newline for them
+      const tracking = node.attrs.dataTracked as NodeChangeTracking | null;
+      if (tracking?.originalType === 'boundaryDeleted') {
+        return; // no separator — this boundary would be removed
+      }
+      if (!isFirstBlock) {
+        text += '\n';
+      }
+      isFirstBlock = false;
+      return;
+    }
+
     if (!node.isText) return;
 
     const hasDeletion = node.marks.some(

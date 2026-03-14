@@ -1,4 +1,5 @@
 import { Mark, mergeAttributes } from '@tiptap/core';
+import { sanitizeCSSValue } from '../utils';
 
 export const FormatChangeMark = Mark.create({
   name: 'formatChange',
@@ -38,6 +39,7 @@ export const FormatChangeMark = Mark.create({
       HTMLAttributes.formatRemoved ? `Removed: ${HTMLAttributes.formatRemoved}` : '',
     ].filter(Boolean).join(', ');
 
+    const safeColor = sanitizeCSSValue(HTMLAttributes.authorColor);
     return [
       'span',
       mergeAttributes(this.options.HTMLAttributes, {
@@ -47,7 +49,7 @@ export const FormatChangeMark = Mark.create({
         'data-format-added': HTMLAttributes.formatAdded,
         'data-format-removed': HTMLAttributes.formatRemoved,
         title,
-        style: `border-bottom: 2px dotted ${HTMLAttributes.authorColor};`,
+        ...(safeColor ? { style: `border-bottom: 2px dotted ${safeColor};` } : {}),
       }),
       0,
     ];

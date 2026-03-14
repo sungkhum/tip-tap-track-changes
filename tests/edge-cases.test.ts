@@ -50,9 +50,21 @@ describe('Paste handling in suggest mode', () => {
     setCursor(editor, 7);
     simulatePaste(editor, 'big\nwide');
 
+    // Multi-line paste splits into paragraphs with tracked insertions
     const insertions = findTextWithMark(editor, 'insertion');
-    expect(insertions).toHaveLength(1);
-    expect(insertions[0].text).toBe('big\nwide');
+    expect(insertions).toHaveLength(2);
+    expect(insertions[0].text).toBe('big');
+    expect(insertions[1].text).toBe('wide');
+
+    // The new paragraph should be tracked as inserted
+    const doc = editor.state.doc;
+    let foundTrackedParagraph = false;
+    doc.descendants((node) => {
+      if (node.isBlock && node.attrs.dataTracked?.originalType === 'paragraphInserted') {
+        foundTrackedParagraph = true;
+      }
+    });
+    expect(foundTrackedParagraph).toBe(true);
   });
 });
 

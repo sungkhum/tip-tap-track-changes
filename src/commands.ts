@@ -2,7 +2,7 @@ import type { RawCommands } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { canJoin } from '@tiptap/pm/transform';
 import type { ChangeAuthor, TrackChangesMode, NodeChangeTracking } from './types';
-import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
+
 import { generateChangeId } from './utils';
 import { trackChangesPluginKey } from './suggest-mode-plugin';
 
@@ -121,14 +121,19 @@ export const trackChangesCommands: Partial<RawCommands> = {
         }
       }
 
-      // Remove insertion marks (text stays)
+      // Remove insertion marks (text stays) — map through tr.mapping in case
+      // earlier dataTracked joins shifted positions
       for (const range of insertionUnmarkRanges) {
-        tr.removeMark(range.from, range.to, state.schema.marks.insertion);
+        const mappedFrom = tr.mapping.map(range.from);
+        const mappedTo = tr.mapping.map(range.to);
+        tr.removeMark(mappedFrom, mappedTo, state.schema.marks.insertion);
       }
 
       // Remove format change marks (formatting stays)
       for (const range of formatChangeRanges) {
-        tr.removeMark(range.from, range.to, state.schema.marks.formatChange);
+        const mappedFrom = tr.mapping.map(range.from);
+        const mappedTo = tr.mapping.map(range.to);
+        tr.removeMark(mappedFrom, mappedTo, state.schema.marks.formatChange);
       }
 
       // Delete deletion-marked text (process from end to preserve positions)
@@ -201,9 +206,11 @@ export const trackChangesCommands: Partial<RawCommands> = {
         }
       });
 
-      // Remove deletion marks (text restored)
+      // Remove deletion marks (text restored) — map through tr.mapping for consistency
       for (const range of deletionUnmarkRanges) {
-        tr.removeMark(range.from, range.to, state.schema.marks.deletion);
+        const mappedFrom = tr.mapping.map(range.from);
+        const mappedTo = tr.mapping.map(range.to);
+        tr.removeMark(mappedFrom, mappedTo, state.schema.marks.deletion);
       }
 
       // Process dataTracked nodes (from end to preserve positions)
@@ -289,6 +296,8 @@ export const trackChangesCommands: Partial<RawCommands> = {
       const boundaryDeletePositions: number[] = [];
 
       // First pass: handle dataTracked and text marks
+      // Map positions through tr.mapping for robustness — setNodeMarkup with
+      // type changes could theoretically shift positions for custom block types.
       state.doc.descendants((node, pos) => {
         if (node.isBlock && node.attrs.dataTracked) {
           const tracking = node.attrs.dataTracked as NodeChangeTracking;
@@ -297,17 +306,19 @@ export const trackChangesCommands: Partial<RawCommands> = {
             boundaryDeletePositions.push(pos);
           }
           // For all dataTracked: clear tracking
-          tr.setNodeMarkup(pos, undefined, { ...node.attrs, dataTracked: null });
+          const mappedPos = tr.mapping.map(pos);
+          const mappedNode = tr.doc.nodeAt(mappedPos);
+          if (mappedNode) {
+            tr.setNodeMarkup(mappedPos, undefined, { ...mappedNode.attrs, dataTracked: null });
+          }
         }
 
         if (!node.isText) return;
         for (const mark of node.marks) {
+          const mappedFrom = tr.mapping.map(pos);
+          const mappedTo = tr.mapping.map(pos + node.nodeSize);
           if (mark.type.name === 'insertion') {
-            tr.removeMark(
-              pos,
-              pos + node.nodeSize,
-              state.schema.marks.insertion,
-            );
+            tr.removeMark(mappedFrom, mappedTo, state.schema.marks.insertion);
           }
           if (mark.type.name === 'deletion') {
             deletionRanges.push({
@@ -316,11 +327,7 @@ export const trackChangesCommands: Partial<RawCommands> = {
             });
           }
           if (mark.type.name === 'formatChange') {
-            tr.removeMark(
-              pos,
-              pos + node.nodeSize,
-              state.schema.marks.formatChange,
-            );
+            tr.removeMark(mappedFrom, mappedTo, state.schema.marks.formatChange);
           }
         }
       });
@@ -374,6 +381,8 @@ export const trackChangesCommands: Partial<RawCommands> = {
       const paragraphInsertedPositions: number[] = [];
 
       // First pass: handle dataTracked and collect text changes
+      // Map positions through tr.mapping for robustness — setNodeMarkup with
+      // type changes could theoretically shift positions for custom block types.
       state.doc.descendants((node, pos) => {
         if (node.isBlock && node.attrs.dataTracked) {
           const tracking = node.attrs.dataTracked as NodeChangeTracking;
@@ -382,28 +391,34 @@ export const trackChangesCommands: Partial<RawCommands> = {
             paragraphInsertedPositions.push(pos);
           } else if (tracking.originalType === 'boundaryDeleted') {
             // Reject boundary deletion: clear tracking (keep separate)
-            tr.setNodeMarkup(pos, undefined, { ...node.attrs, dataTracked: null });
+            const mappedPos = tr.mapping.map(pos);
+            const mappedNode = tr.doc.nodeAt(mappedPos);
+            if (mappedNode) {
+              tr.setNodeMarkup(mappedPos, undefined, { ...mappedNode.attrs, dataTracked: null });
+            }
           } else {
             // Reject node type change: revert to original type
             const originalType = state.schema.nodes[tracking.originalType];
             if (originalType) {
-              tr.setNodeMarkup(pos, originalType, {
-                ...node.attrs,
-                ...(tracking.originalAttrs ?? {}),
-                dataTracked: null,
-              });
+              const mappedPos = tr.mapping.map(pos);
+              const mappedNode = tr.doc.nodeAt(mappedPos);
+              if (mappedNode) {
+                tr.setNodeMarkup(mappedPos, originalType, {
+                  ...mappedNode.attrs,
+                  ...(tracking.originalAttrs ?? {}),
+                  dataTracked: null,
+                });
+              }
             }
           }
         }
 
         if (!node.isText) return;
         for (const mark of node.marks) {
+          const mappedFrom = tr.mapping.map(pos);
+          const mappedTo = tr.mapping.map(pos + node.nodeSize);
           if (mark.type.name === 'deletion') {
-            tr.removeMark(
-              pos,
-              pos + node.nodeSize,
-              state.schema.marks.deletion,
-            );
+            tr.removeMark(mappedFrom, mappedTo, state.schema.marks.deletion);
           }
           if (mark.type.name === 'insertion') {
             insertionDeleteRanges.push({
@@ -416,20 +431,16 @@ export const trackChangesCommands: Partial<RawCommands> = {
             if (mark.attrs.formatAdded) {
               const markType = state.schema.marks[mark.attrs.formatAdded];
               if (markType) {
-                tr.removeMark(pos, pos + node.nodeSize, markType);
+                tr.removeMark(mappedFrom, mappedTo, markType);
               }
             }
             if (mark.attrs.formatRemoved) {
               const markType = state.schema.marks[mark.attrs.formatRemoved];
               if (markType) {
-                tr.addMark(pos, pos + node.nodeSize, markType.create());
+                tr.addMark(mappedFrom, mappedTo, markType.create());
               }
             }
-            tr.removeMark(
-              pos,
-              pos + node.nodeSize,
-              state.schema.marks.formatChange,
-            );
+            tr.removeMark(mappedFrom, mappedTo, state.schema.marks.formatChange);
           }
         }
       });
@@ -484,6 +495,9 @@ export const trackChangesCommands: Partial<RawCommands> = {
 
       const mode = editor.storage.trackChanges.mode;
 
+      // View mode: no changes allowed
+      if (mode === 'view') return false;
+
       // In edit mode, just do a normal setNodeMarkup
       if (mode !== 'suggest') {
         const { $from } = state.selection;
@@ -527,10 +541,10 @@ export const trackChangesCommands: Partial<RawCommands> = {
       if (node.attrs.dataTracked) {
         const existing = node.attrs.dataTracked as NodeChangeTracking;
         if (existing.originalType === typeName) {
-          // Reverting to original — remove the tracking
+          // Reverting to original — restore original attrs and remove tracking
           const tr = state.tr;
           tr.setNodeMarkup(pos, nodeType, {
-            ...node.attrs,
+            ...(existing.originalAttrs ?? {}),
             ...attrs,
             dataTracked: null,
           });

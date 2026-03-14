@@ -10,6 +10,7 @@ export interface TrackChangesOptions {
   author: ChangeAuthor;
   mode?: TrackChangesMode;
   onStatusChange?: (changeId: string, status: 'accepted' | 'rejected') => void;
+  additionalBlockTypes?: string[];
 }
 
 export interface TrackChangesStorage {

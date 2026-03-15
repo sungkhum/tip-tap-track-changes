@@ -25,9 +25,7 @@ export const FormatChangeMark = Mark.create({
     };
   },
 
-  inclusive() {
-    return false;
-  },
+  inclusive: false,
 
   parseHTML() {
     return [{ tag: 'span[data-format-change]' }];

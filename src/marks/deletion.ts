@@ -29,9 +29,7 @@ export const DeletionMark = Mark.create({
     };
   },
 
-  inclusive() {
-    return false;
-  },
+  inclusive: false,
 
   parseHTML() {
     return [{ tag: 'del[data-change-id]' }];

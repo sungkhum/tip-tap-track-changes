@@ -29,9 +29,7 @@ export const InsertionMark = Mark.create({
     };
   },
 
-  inclusive() {
-    return false;
-  },
+  inclusive: false,
 
   parseHTML() {
     return [{ tag: 'ins[data-change-id]' }];

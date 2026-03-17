@@ -20,11 +20,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/sungkhum/tip-tap-track-changes.git"
+    "url": "https://github.com/sungkhum/tiptap-track-changes.git"
   },
-  "homepage": "https://github.com/sungkhum/tip-tap-track-changes",
+  "homepage": "https://github.com/sungkhum/tiptap-track-changes",
   "bugs": {
-    "url": "https://github.com/sungkhum/tip-tap-track-changes/issues"
+    "url": "https://github.com/sungkhum/tiptap-track-changes/issues"
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",

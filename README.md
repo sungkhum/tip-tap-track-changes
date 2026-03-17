@@ -1,11 +1,11 @@
 # tiptap-track-changes
 
 [![npm version](https://img.shields.io/npm/v/tiptap-track-changes.svg)](https://www.npmjs.com/package/tiptap-track-changes)
-[![license](https://img.shields.io/npm/l/tiptap-track-changes.svg)](https://github.com/sungkhum/tip-tap-track-changes/blob/main/LICENSE)
+[![license](https://img.shields.io/npm/l/tiptap-track-changes.svg)](https://github.com/sungkhum/tiptap-track-changes/blob/main/LICENSE)
 
 Open-source track changes / suggesting mode extension for [Tiptap](https://tiptap.dev). Adds Google Docs-style change tracking to any Tiptap editor — insertions, deletions, replacements, and format changes are recorded as inline marks that can be individually accepted or rejected.
 
-**[Live Demo](https://sungkhum.github.io/tip-tap-track-changes/)** | **[npm](https://www.npmjs.com/package/tiptap-track-changes)**
+**[Live Demo](https://sungkhum.github.io/tiptap-track-changes/)** | **[npm](https://www.npmjs.com/package/tiptap-track-changes)**
 
 ![tiptap-track-changes demo showing multi-author suggesting mode with review sidebar](demo/screenshot.jpg)
 
@@ -171,14 +171,14 @@ When a change is **accepted**, its marks are removed (insertions become normal t
 The `demo/` directory contains a full interactive demo with a review sidebar, timeline view, keyboard navigation, and pre-built scenarios.
 
 ```bash
-git clone https://github.com/sungkhum/tip-tap-track-changes.git
-cd tip-tap-track-changes
+git clone https://github.com/sungkhum/tiptap-track-changes.git
+cd tiptap-track-changes
 npm install
 cd demo && npm install
 cd .. && npm run dev
 ```
 
-Or try the **[hosted demo](https://sungkhum.github.io/tip-tap-track-changes/)** directly.
+Or try the **[hosted demo](https://sungkhum.github.io/tiptap-track-changes/)** directly.
 
 ## Running Tests
 

@@ -16,6 +16,7 @@ export interface TrackChangesOptions {
 export interface TrackChangesStorage {
   mode: TrackChangesMode;
   author: ChangeAuthor;
+  onStatusChange?: (changeId: string, status: 'accepted' | 'rejected') => void;
 }
 
 export interface TrackedChangeInfo {

@@ -168,6 +168,34 @@ describe('View mode input blocking', () => {
     expect(handled).toBe(false);
     expect(findTextWithMark(editor, 'insertion')).toHaveLength(0);
   });
+
+  it('reports the editor as not editable in view mode', () => {
+    editor = createTestEditor({
+      content: '<p>Hello world</p>',
+      mode: 'view',
+    });
+    expect(editor.view.editable).toBe(false);
+  });
+
+  it('reports the editor as editable in edit and suggest modes', () => {
+    editor = createTestEditor({ content: '<p>Hello world</p>', mode: 'edit' });
+    expect(editor.view.editable).toBe(true);
+    editor.destroy();
+
+    editor = createTestEditor({ content: '<p>Hello world</p>', mode: 'suggest' });
+    expect(editor.view.editable).toBe(true);
+  });
+
+  it('flips editable when toggling mode at runtime via setTrackChangesMode', () => {
+    editor = createTestEditor({ content: '<p>Hello world</p>', mode: 'suggest' });
+    expect(editor.view.editable).toBe(true);
+
+    editor.commands.setTrackChangesMode('view');
+    expect(editor.view.editable).toBe(false);
+
+    editor.commands.setTrackChangesMode('edit');
+    expect(editor.view.editable).toBe(true);
+  });
 });
 
 // =====================================================================

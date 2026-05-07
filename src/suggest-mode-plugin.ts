@@ -659,6 +659,8 @@ export function createSuggestModePlugin(
     key: trackChangesPluginKey,
 
     props: {
+      editable: () => options.getMode() !== 'view',
+
       handleTextInput(view, from, to, text) {
         if (options.getMode() !== 'suggest') return false;
         // Let native composition proceed uninterrupted for complex scripts
@@ -713,7 +715,7 @@ export function createSuggestModePlugin(
 
     // Safety net: catch text insertions that bypass handleTextInput
     // (e.g., IME composition for Khmer, Thai, CJK, etc.) and add insertion marks
-    appendTransaction(transactions, oldState, newState) {
+    appendTransaction(transactions, _oldState, newState) {
       if (options.getMode() !== 'suggest') return null;
 
       // Skip transactions we already handled
@@ -798,7 +800,7 @@ export function createSuggestModePlugin(
         // Iterate through each step's map to find changed ranges
         transaction.steps.forEach((step, stepIndex) => {
           step.getMap().forEach(
-            (oldStart: number, oldEnd: number, newStart: number, newEnd: number) => {
+            (_oldStart: number, _oldEnd: number, newStart: number, newEnd: number) => {
               if (newEnd <= newStart) return;
 
               // Map positions forward through remaining steps in this transaction

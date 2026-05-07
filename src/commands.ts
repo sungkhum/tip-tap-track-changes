@@ -1,7 +1,12 @@
 import type { RawCommands } from '@tiptap/core';
 import { TextSelection } from '@tiptap/pm/state';
 import { canJoin } from '@tiptap/pm/transform';
-import type { ChangeAuthor, TrackChangesMode, NodeChangeTracking } from './types';
+import type {
+  ChangeAuthor,
+  TrackChangesMode,
+  NodeChangeTracking,
+  TrackChangesStorage,
+} from './types';
 
 import { generateChangeId } from './utils';
 import { trackChangesPluginKey } from './suggest-mode-plugin';
@@ -21,34 +26,54 @@ declare module '@tiptap/core' {
       trackSetNode: (typeName: string, attrs?: Record<string, unknown>) => ReturnType;
     };
   }
+
+  interface Storage {
+    trackChanges: TrackChangesStorage;
+  }
 }
 
 export const trackChangesCommands: Partial<RawCommands> = {
   setSuggestMode:
     () =>
-    ({ editor }) => {
+    ({ editor, tr, dispatch }) => {
       editor.storage.trackChanges.mode = 'suggest';
+      if (dispatch) {
+        tr.setMeta('addToHistory', false);
+        dispatch(tr);
+      }
       return true;
     },
 
   setEditMode:
     () =>
-    ({ editor }) => {
+    ({ editor, tr, dispatch }) => {
       editor.storage.trackChanges.mode = 'edit';
+      if (dispatch) {
+        tr.setMeta('addToHistory', false);
+        dispatch(tr);
+      }
       return true;
     },
 
   setViewMode:
     () =>
-    ({ editor }) => {
+    ({ editor, tr, dispatch }) => {
       editor.storage.trackChanges.mode = 'view';
+      if (dispatch) {
+        tr.setMeta('addToHistory', false);
+        dispatch(tr);
+      }
       return true;
     },
 
   setTrackChangesMode:
     (mode: TrackChangesMode) =>
-    ({ editor }) => {
+    ({ editor, tr, dispatch }) => {
       editor.storage.trackChanges.mode = mode;
+      if (dispatch) {
+        tr.setMeta('addToHistory', false);
+        dispatch(tr);
+      }
       return true;
     },
 
